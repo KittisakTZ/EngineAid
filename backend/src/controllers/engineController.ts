@@ -19,7 +19,6 @@ const prisma = new PrismaClient();
 
 // --- Function getEnginePrompts (เหมือนเดิม) ---
 export const getEnginePrompts = async (req: CustomRequest, res: Response) => {
-    // ... (โค้ดเดิม ไม่เปลี่ยนแปลง)
     try {
         let userId: string;
 
