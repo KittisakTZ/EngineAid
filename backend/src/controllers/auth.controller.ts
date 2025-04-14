@@ -23,25 +23,26 @@ export const register = async (req: Request, res: Response) => {
 };
 
 export const login = async (req: Request, res: Response) => {
+  console.log("Login controller started for:", req.body.email); // Log เริ่มต้น
   try {
     const user = await loginUser(req.body.email, req.body.password);
+    console.log("User found by loginUser:", user ? user.email : 'null'); // Log ผลลัพธ์ loginUser
+
     if (user) {
+      console.log("Generating token..."); // Log ก่อนสร้าง token
       const token = generateToken(user);
+      console.log("Token generated:", token ? 'Yes' : 'No'); // Log หลังสร้าง token (อาจจะ Log บางส่วนของ token ถ้าต้องการ)
 
-      // Set Token in Cookie
-      res.cookie('authToken', token, {
-        httpOnly: true,
-        maxAge: 3600000,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-      });
+      console.log("Sending JSON response with user and token..."); // Log ก่อนส่ง response
+      res.json({ user, token });
+      console.log("JSON response sent."); // Log หลังส่ง (อาจจะไม่ขึ้นถ้าการส่งค้าง)
 
-      res.json({ user });  // Send User without Token
     } else {
+      console.log("Invalid credentials."); // Log กรณีไม่เจอ user
       res.status(401).json({ message: 'Invalid credentials' });
     }
   } catch (error) {
-    console.error('Login failed:', error);
+    console.error('!!! Login controller CATCH block:', error); // Log ใน catch
     res.status(500).json({ message: 'Login failed' });
   }
 };
