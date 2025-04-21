@@ -1,10 +1,12 @@
 // app/(auth)/login.tsx
 import React, { useState } from 'react';
-import { View, Alert, KeyboardAvoidingView, Platform, ScrollView,StyleSheet } from 'react-native';
-import { TextInput as PaperTextInput, Button as PaperButton, Text as PaperText } from 'react-native-paper';
+import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { TextInput as PaperTextInput, Text as PaperText } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons'; // Assuming Expo Icons is available
 import api from '../../services/api';
 import { storeToken, storeUser } from '../../services/auth';
+import { CustomButton } from '../../components/CustomButton'; // Import CustomButton
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -62,6 +64,9 @@ export default function LoginScreen() {
     }
   };
 
+  // Create a login icon for the button
+  const loginIcon = <Ionicons name="log-in" size={18} color="#FFFFFF" />;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -94,32 +99,35 @@ export default function LoginScreen() {
             left={<PaperTextInput.Icon icon="lock" />}
           />
 
-          <PaperButton
-            mode="contained"
+          {/* Replace PaperButton with CustomButton */}
+          <CustomButton
             onPress={handleLogin}
+            title={loading ? "Logging in..." : "Login"}
+            variant="primary"
+            size="large"
             loading={loading}
             disabled={loading}
             style={styles.button}
-            icon="login"
-          >
-            {loading ? 'Logging in...' : 'Login'}
-          </PaperButton>
+            icon={loginIcon}
+            iconPosition="left"
+          />
 
-          <PaperButton
-            mode="text"
+          {/* Replace the second button too */}
+          <CustomButton
             onPress={() => router.push('/(auth)/register')}
+            title="Don't have an account? Register"
+            variant="text"
+            size="medium"
             disabled={loading}
             style={styles.switchButton}
-          >
-            Don't have an account? Register
-          </PaperButton>
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// Styles are the same as before
+// Styles are the same as before with minor adjustments
 const styles = StyleSheet.create({
   keyboardAvoidingView: {
     flex: 1,
@@ -144,7 +152,6 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
-    paddingVertical: 8,
   },
   switchButton: {
     marginTop: 20,

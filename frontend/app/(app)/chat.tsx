@@ -1,15 +1,19 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, TextInput, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert, 
-    FlatList, Modal, TouchableOpacity, ScrollView
+    KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+    FlatList, Modal, TouchableOpacity, ScrollView, ListRenderItemInfo
 } from 'react-native';
-import { Button, Divider } from 'react-native-paper';
+import { Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import EventSource, { MessageEvent } from 'react-native-sse';
 import { getToken, removeToken, getUser } from '../../services/auth';
 import { getApiUrl } from '../../services/api';
 import api from '../../services/api';
+import { CustomButton } from '../../components/CustomButton';
+import { Pagination } from '../../components/Pagination';
+import { Dropdown } from '../../components/Dropdown';
 
 // Add interface for user
 interface User {
@@ -48,7 +52,7 @@ interface CarModelsMap {
 
 // Car information data
 const carMakes = [
-  'Toyota', 'Honda', 'Nissan', 'Mazda', 'Ford', 
+  'Toyota', 'Honda', 'Nissan', 'Mazda', 'Ford',
   'Chevrolet', 'BMW', 'Mercedes-Benz', 'Audi',
   'Hyundai', 'Kia', 'Mitsubishi'
 ];
@@ -91,17 +95,17 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
   const apiUrl = getApiUrl();
-  
+
   // Car selection state
   const [selectedMake, setSelectedMake] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
-  
+
   // Dropdown visibility state
   const [makeDropdownVisible, setMakeDropdownVisible] = useState(false);
   const [modelDropdownVisible, setModelDropdownVisible] = useState(false);
   const [yearDropdownVisible, setYearDropdownVisible] = useState(false);
-  
+
   // Admin related state
   const [adminModalVisible, setAdminModalVisible] = useState(false);
   const [promptData, setPromptData] = useState<EnginePrompt[]>([]);
@@ -281,61 +285,153 @@ export default function ChatScreen() {
   const fetchPromptData = async (page = 1, limit = 15) => {
     try {
       setPromptsLoading(true);
-      const response = await api.get(`/engine/prompts?page=${page}&limit=${limit}`);
-      console.log('Fetch prompts response:', response.data);
-      
-      setPromptData(response.data.data);
-      setPagination(response.data.pagination);
-    } catch (error) {
+      setPromptData([]); // Clear previous data while loading new page
+
+      const token = await getToken();
+      if (!token) {
+        Alert.alert("ข้อผิดพลาดการตรวจสอบสิทธิ์", "กรุณาเข้าสู่ระบบอีกครั้ง");
+        router.replace('/(auth)/login');
+        setPromptsLoading(false); // Ensure loading stops
+        return;
+      }
+
+      console.log(`Fetching prompts data: page=${page}, limit=${limit}`);
+
+      const apiUrl = getApiUrl();
+      const url = `${apiUrl}/engine/prompts?page=${page}&limit=${limit}`;
+
+      const fetchResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!fetchResponse.ok) {
+        console.error('API error status:', fetchResponse.status);
+        const errorText = await fetchResponse.text(); // Read error body
+        console.error('API error body:', errorText);
+        throw new Error(`API error: ${fetchResponse.status} - ${errorText}`);
+      }
+
+      const responseData = await fetchResponse.json();
+      console.log('Raw API Response:', JSON.stringify(responseData, null, 2));
+
+      let prompts: EnginePrompt[] = [];
+      let receivedPagination: Pagination | null = null;
+
+      // --- Data Extraction Logic ---
+      if (responseData && typeof responseData === 'object') {
+        console.log('Response data keys:', Object.keys(responseData));
+
+        // Check for common pagination structures first
+        if (responseData.pagination && typeof responseData.pagination === 'object') {
+            receivedPagination = {
+                currentPage: responseData.pagination.currentPage ?? page,
+                pageSize: responseData.pagination.pageSize ?? limit,
+                totalItems: responseData.pagination.totalItems ?? 0,
+                totalPages: responseData.pagination.totalPages ?? 1,
+            };
+            console.log('Received pagination data:', receivedPagination);
+        }
+
+        // Function to map item to EnginePrompt structure
+        const mapItem = (item: any, index: number): EnginePrompt => ({
+          id: item.id || `item-${page}-${index}`, // Ensure unique ID across pages
+          prompt: item.prompt || item.question || item.text || 'ไม่มีข้อมูล',
+          response: item.response || item.answer || item.reply || 'ไม่มีข้อมูล',
+          createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+          userId: item.userId || item.user_id || 'ไม่ระบุ',
+        });
+
+        // Extract prompt data based on common structures
+        if (responseData.data && Array.isArray(responseData.data)) {
+          console.log('Response has data array with', responseData.data.length, 'items');
+          prompts = responseData.data.map(mapItem);
+        } else if (responseData.items && Array.isArray(responseData.items)) {
+          console.log('Response has items array with', responseData.items.length, 'items');
+          prompts = responseData.items.map(mapItem);
+        } else if (responseData.prompts && Array.isArray(responseData.prompts)) {
+            console.log('Response has prompts array with', responseData.prompts.length, 'items');
+            prompts = responseData.prompts.map(mapItem);
+        } else if (Array.isArray(responseData)) {
+          console.log('Response is a direct array with', responseData.length, 'items');
+          prompts = responseData.map(mapItem);
+        } else {
+           console.log('Response format is unexpected, trying to find an array property');
+           // Fallback: try finding the first property that is an array
+           const arrayKey = Object.keys(responseData).find(key => Array.isArray(responseData[key]));
+           if (arrayKey) {
+               console.log(`Found array in key '${arrayKey}' with ${responseData[arrayKey].length} items`);
+               prompts = responseData[arrayKey].map(mapItem);
+           } else {
+               console.log('Could not find a suitable array property for prompt data.');
+           }
+        }
+
+        // --- Pagination Handling ---
+        if (prompts.length > 0) {
+          console.log(`Created ${prompts.length} formatted prompt items`);
+          setPromptData(prompts);
+
+          if (receivedPagination) {
+            // Use pagination info from API response
+             // Adjust totalPages if necessary based on totalItems and pageSize
+             const calculatedTotalPages = Math.ceil(receivedPagination.totalItems / receivedPagination.pageSize);
+             setPagination({
+                 ...receivedPagination,
+                 totalPages: calculatedTotalPages > 0 ? calculatedTotalPages : 1, // Ensure at least 1 page
+             });
+          } else {
+            // Fallback: Create basic pagination if API didn't provide it
+            console.warn('Pagination data missing in API response, creating fallback.');
+            // Assume this page is full unless it's the only one
+            const isLikelyLastPage = prompts.length < limit;
+            setPagination({
+              currentPage: page,
+              pageSize: limit,
+              totalItems: (page - 1) * limit + prompts.length + (isLikelyLastPage ? 0 : 1), // Estimate total
+              totalPages: page + (isLikelyLastPage ? 0 : 1), // Estimate total pages
+            });
+          }
+        } else {
+          console.log('No data could be extracted or array was empty.');
+          setPromptData([]);
+           // If no data, reset pagination to reflect this
+          setPagination({
+            currentPage: 1,
+            pageSize: limit,
+            totalItems: 0,
+            totalPages: 1 // Still show 1 page, but it's empty
+          });
+        }
+
+      } else {
+        console.error('Invalid response format, not an object:', responseData);
+        setPromptData([]);
+         setPagination({ currentPage: 1, pageSize: limit, totalItems: 0, totalPages: 1 });
+        Alert.alert('ข้อผิดพลาด', 'ข้อมูลที่ได้รับมีรูปแบบไม่ถูกต้อง');
+      }
+    } catch (error: unknown) {
       console.error('Error fetching prompt data:', error);
-      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถดึงข้อมูลได้ กรุณาลองอีกครั้ง');
+      setPromptData([]);
+      setPagination({ currentPage: 1, pageSize: limit, totalItems: 0, totalPages: 1 });
+
+      const errorMessage = error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ';
+      Alert.alert('ข้อผิดพลาด', `ไม่สามารถดึงข้อมูลได้: ${errorMessage}`);
     } finally {
       setPromptsLoading(false);
     }
   };
 
   const handlePageChange = (newPage: number) => {
-    if (newPage > 0 && newPage <= pagination.totalPages) {
+      // Ensure newPage is within valid bounds (1 to totalPages)
+    if (newPage > 0 && newPage <= pagination.totalPages && newPage !== pagination.currentPage) {
       fetchPromptData(newPage, pagination.pageSize);
+    } else {
+        console.log(`Page change ignored: newPage=${newPage}, current=${pagination.currentPage}, total=${pagination.totalPages}`);
     }
-  };
-
-  const renderPaginationControls = () => {
-    return (
-      <View style={styles.paginationControls}>
-        <Button 
-          mode="text" 
-          onPress={() => handlePageChange(1)}
-          disabled={pagination.currentPage === 1 || promptsLoading}
-        >
-          หน้าแรก
-        </Button>
-        <Button 
-          mode="text" 
-          onPress={() => handlePageChange(pagination.currentPage - 1)}
-          disabled={pagination.currentPage === 1 || promptsLoading}
-        >
-          ก่อนหน้า
-        </Button>
-        <Text style={styles.pageInfo}>
-          {pagination.currentPage} / {pagination.totalPages}
-        </Text>
-        <Button 
-          mode="text" 
-          onPress={() => handlePageChange(pagination.currentPage + 1)}
-          disabled={pagination.currentPage === pagination.totalPages || promptsLoading}
-        >
-          ถัดไป
-        </Button>
-        <Button 
-          mode="text" 
-          onPress={() => handlePageChange(pagination.totalPages)}
-          disabled={pagination.currentPage === pagination.totalPages || promptsLoading}
-        >
-          หน้าสุดท้าย
-        </Button>
-      </View>
-    );
   };
 
   const renderAdminModal = () => {
@@ -349,39 +445,107 @@ export default function ChatScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>แผงควบคุมผู้ดูแลระบบ</Text>
-            
+
             {promptsLoading ? (
-              <ActivityIndicator size="large" color="#0000ff" />
+              <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />
             ) : (
               <>
-                <FlatList
-                  data={promptData}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
-                    <View style={styles.promptItem}>
-                      <Text style={styles.promptDate}>
-                        {new Date(item.createdAt).toLocaleDateString('th-TH')}
+                {/* Debug Info (Optional) */}
+                <Text style={styles.debugText}>
+                  สถานะ: {pagination.currentPage}/{pagination.totalPages} | รายการ: {promptData.length} / {pagination.totalItems}
+                </Text>
+
+                {/* Data Table/List */}
+                <View style={styles.tableContainer}>
+                  {/* Table Header */}
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.3 }]}>ID</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำถาม</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำตอบ</Text>
+                  </View>
+
+                  {/* Table Body (FlatList) */}
+                  {Array.isArray(promptData) && promptData.length > 0 ? (
+                    <FlatList
+                      data={promptData}
+                      keyExtractor={(item) => item.id} // Use the unique ID
+                      renderItem={({ item, index }) => (
+                        <TouchableOpacity
+                          style={styles.tableRow}
+                          onPress={() => {
+                            Alert.alert(
+                              'รายละเอียดข้อมูล',
+                              `ID: ${item.id}\nUser: ${item.userId}\nCreated: ${new Date(item.createdAt).toLocaleString()}\n\nคำถาม:\n${item.prompt}\n\nคำตอบ:\n${item.response}`,
+                              [{ text: 'ปิด', style: 'cancel' }]
+                            );
+                          }}
+                        >
+                          <Text
+                            style={[styles.tableCell, { flex: 0.3 }]}
+                            numberOfLines={1}
+                            ellipsizeMode="middle"
+                          >
+                            {item.id ? item.id.substring(item.id.length - 8) : `N/A-${index}`} {/* Show last 8 chars */}
+                          </Text>
+                          <Text
+                            style={[styles.tableCell, { flex: 0.35 }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {item.prompt || 'ไม่มีข้อมูล'}
+                          </Text>
+                          <Text
+                            style={[styles.tableCell, { flex: 0.35 }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {item.response || 'ไม่มีข้อมูล'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      style={styles.tableBody} // Let FlatList handle its own scrolling
+                    />
+                  ) : (
+                    <View style={styles.noDataContainer}>
+                      <Text style={styles.noDataText}>
+                          {pagination.totalItems === 0 ? 'ไม่มีข้อมูลในระบบ' : 'ไม่พบข้อมูลในหน้านี้'}
                       </Text>
-                      <Text style={styles.promptText}>{item.prompt}</Text>
-                      <Text numberOfLines={2} style={styles.responseText}>
-                        {item.response}
+                      <Text style={styles.noDataSubText}>
+                        กรุณาลองรีเฟรช หรือตรวจสอบ API
                       </Text>
                     </View>
                   )}
-                  style={styles.promptList}
+                </View>
+
+                {/* Replace with Pagination component */}
+                <Pagination 
+                  currentPage={pagination.currentPage}
+                  totalPages={pagination.totalPages}
+                  onPageChange={handlePageChange}
+                  loading={promptsLoading}
+                  style={styles.paginationContainer}
                 />
-                
-                {renderPaginationControls()}
               </>
             )}
-            
-            <Button 
-              mode="contained"
+
+            {/* Action Buttons */}
+            <CustomButton
+              title="รีเฟรชข้อมูล"
+              variant="success"
+              onPress={() => {
+                console.log('Refreshing data...');
+                fetchPromptData(1, pagination.pageSize); // Refresh goes to page 1
+              }}
+              disabled={promptsLoading}
+              style={styles.refreshButton}
+            />
+
+            <CustomButton
+              title="ปิด"
+              variant="danger"
               onPress={() => setAdminModalVisible(false)}
               style={styles.closeButton}
-            >
-              ปิด
-            </Button>
+            />
           </View>
         </View>
       </Modal>
@@ -396,132 +560,79 @@ export default function ChatScreen() {
     </View>
   );
 
-  // Render custom dropdown option
-  const renderDropdownItem = (item: string, onSelect: (value: string) => void) => {
-    return (
-      <TouchableOpacity
-        style={styles.dropdownItem}
-        onPress={() => onSelect(item)}
-        key={item}
-      >
-        <Text style={styles.dropdownItemText}>{item}</Text>
-      </TouchableOpacity>
-    );
-  };
-
   // Render car selection section with custom dropdowns
   const renderCarSelections = () => {
     return (
       <View style={styles.carSelectionContainer}>
-        <Text style={styles.carSelectionTitle}>เลือกรถของคุณ:</Text>
-        
+        <Text style={styles.carSelectionTitle}>เลือกรถของคุณ (Optional):</Text>
+
         <View style={styles.carSelectionRow}>
-          {/* Make Dropdown */}
-          <View style={styles.dropdownContainer}>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => {
+          {/* Make Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="ยี่ห้อรถ"
+            items={carMakes}
+            selectedValue={selectedMake}
+            onSelect={(value) => setSelectedMake(value)}
+            visible={makeDropdownVisible}
+            onToggle={() => {
+              hideAllDropdowns();
+              setMakeDropdownVisible(!makeDropdownVisible);
+            }}
+            style={styles.dropdownContainer}
+          />
+
+          {/* Model Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="รุ่นรถ"
+            items={selectedMake ? carModelsByMake[selectedMake] || [] : []}
+            selectedValue={selectedModel}
+            onSelect={(value) => setSelectedModel(value)}
+            disabled={!selectedMake}
+            visible={modelDropdownVisible}
+            onToggle={() => {
+              if (selectedMake) {
                 hideAllDropdowns();
-                setMakeDropdownVisible(!makeDropdownVisible);
-              }}
-            >
-              <Text style={[styles.dropdownButtonText, !selectedMake && styles.placeholderText]}>
-                {selectedMake || "ยี่ห้อรถ"}
-              </Text>
-              <Text style={styles.dropdownIcon}>▼</Text>
-            </TouchableOpacity>
-            
-            {makeDropdownVisible && (
-              <View style={styles.dropdownList}>
-                <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled={true}>
-                  {carMakes.map(make => renderDropdownItem(make, (selected) => {
-                    setSelectedMake(selected);
-                    setMakeDropdownVisible(false);
-                  }))}
-                </ScrollView>
-              </View>
-            )}
-          </View>
-          
-          {/* Model Dropdown */}
-          <View style={styles.dropdownContainer}>
-            <TouchableOpacity
-              style={[styles.dropdownButton, !selectedMake && styles.disabledDropdown]}
-              onPress={() => {
-                if (selectedMake) {
-                  hideAllDropdowns();
-                  setModelDropdownVisible(!modelDropdownVisible);
-                }
-              }}
-              disabled={!selectedMake}
-            >
-              <Text style={[
-                styles.dropdownButtonText, 
-                !selectedModel && styles.placeholderText,
-                !selectedMake && styles.disabledText
-              ]}>
-                {selectedModel || "รุ่นรถ"}
-              </Text>
-              <Text style={[styles.dropdownIcon, !selectedMake && styles.disabledText]}>▼</Text>
-            </TouchableOpacity>
-            
-            {modelDropdownVisible && selectedMake && (
-              <View style={styles.dropdownList}>
-                <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled={true}>
-                  {carModelsByMake[selectedMake]?.map(model => renderDropdownItem(model, (selected) => {
-                    setSelectedModel(selected);
-                    setModelDropdownVisible(false);
-                  }))}
-                </ScrollView>
-              </View>
-            )}
-          </View>
-          
-          {/* Year Dropdown */}
-          <View style={styles.dropdownContainer}>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => {
-                hideAllDropdowns();
-                setYearDropdownVisible(!yearDropdownVisible);
-              }}
-            >
-              <Text style={[styles.dropdownButtonText, !selectedYear && styles.placeholderText]}>
-                {selectedYear || "ปีรถ"}
-              </Text>
-              <Text style={styles.dropdownIcon}>▼</Text>
-            </TouchableOpacity>
-            
-            {yearDropdownVisible && (
-              <View style={styles.dropdownList}>
-                <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled={true}>
-                  {carYears.map(year => renderDropdownItem(year, (selected) => {
-                    setSelectedYear(selected);
-                    setYearDropdownVisible(false);
-                  }))}
-                </ScrollView>
-              </View>
-            )}
-          </View>
+                setModelDropdownVisible(!modelDropdownVisible);
+              }
+            }}
+            style={styles.dropdownContainer}
+          />
+
+          {/* Year Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="ปีรถ"
+            items={carYears}
+            selectedValue={selectedYear}
+            onSelect={(value) => setSelectedYear(value)}
+            visible={yearDropdownVisible}
+            onToggle={() => {
+              hideAllDropdowns();
+              setYearDropdownVisible(!yearDropdownVisible);
+            }}
+            style={styles.dropdownContainer}
+          />
         </View>
-        
-        {/* Show selected car details and reset button */}
+
+        {/* Selected car display */}
         {(selectedMake || selectedModel || selectedYear) && (
           <View style={styles.selectedCarContainer}>
             <Text style={styles.selectedCarText}>
               {selectedMake} {selectedModel} {selectedYear ? `(${selectedYear})` : ''}
             </Text>
-            <TouchableOpacity 
-              style={styles.resetButton}
+            <CustomButton
+              title="ล้างข้อมูลรถ"
+              variant="outline"
+              size="small"
               onPress={resetCarSelection}
-            >
-              <Text style={styles.resetButtonText}>ล้างข้อมูลรถ</Text>
-            </TouchableOpacity>
+              style={styles.resetButton}
+              textStyle={styles.resetButtonText}
+            />
           </View>
         )}
       </View>
     );
   };
+
 
   return (
     <KeyboardAvoidingView
@@ -529,33 +640,29 @@ export default function ChatScreen() {
       style={styles.container}
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
-      <TouchableOpacity
-        style={styles.outsideDropdownArea}
-        activeOpacity={1}
-        onPress={hideAllDropdowns}
-      >
+      <View style={styles.flexContainer}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>EngineAid Chat</Text>
           <View style={styles.headerButtons}>
             {isAdmin && (
-              <Button 
-                mode="contained" 
+              <CustomButton
+                title="แผงผู้ดูแล"
+                variant="primary"
                 onPress={() => {
                   setAdminModalVisible(true);
-                  fetchPromptData(1, 15);
+                  // Fetch initial data for page 1 when opening modal
+                  fetchPromptData(1, pagination.pageSize);
                 }}
                 style={styles.adminButton}
-              >
-                แผงผู้ดูแล
-              </Button>
+              />
             )}
-            <Button 
-              mode="outlined" 
-              onPress={handleLogout} 
+            <CustomButton
+              title="ออกจากระบบ"
+              variant="outline"
+              onPress={handleLogout}
               style={styles.logoutButton}
-            >
-              ออกจากระบบ
-            </Button>
+              textStyle={styles.logoutButtonText}
+            />
           </View>
         </View>
 
@@ -574,6 +681,7 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.id}
           style={styles.messageList}
           contentContainerStyle={{ paddingBottom: 10 }}
+          onScrollBeginDrag={hideAllDropdowns}
         />
 
         {renderCarSelections()}
@@ -586,30 +694,29 @@ export default function ChatScreen() {
             placeholder="ถามเกี่ยวกับรถของคุณ..."
             editable={!isLoading}
             multiline={true}
+            onFocus={hideAllDropdowns}
           />
-          <Button 
-            mode="contained"
-            onPress={handleSend} 
+          <CustomButton
+            title="ส่ง"
+            variant="primary"
+            onPress={handleSend}
             disabled={isLoading || !inputText.trim()}
             loading={isLoading}
             style={styles.sendButton}
-          >
-            ส่ง
-          </Button>
+          />
         </View>
 
-        {renderAdminModal()}
-      </TouchableOpacity>
+        {isAdmin && renderAdminModal()}
+      </View>
     </KeyboardAvoidingView>
   );
 }
-
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#f0f0f0' 
+  container: {
+    flex: 1,
+    backgroundColor: '#f0f0f0'
   },
-  outsideDropdownArea: {
+  flexContainer: {
     flex: 1,
   },
   header: {
@@ -623,9 +730,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#cccccc',
   },
-  headerTitle: { 
-    fontSize: 18, 
-    fontWeight: 'bold' 
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold'
   },
   headerButtons: {
     flexDirection: 'row',
@@ -633,10 +740,12 @@ const styles = StyleSheet.create({
   },
   adminButton: {
     marginRight: 8,
-    backgroundColor: '#4a90e2',
   },
   logoutButton: {
     borderColor: '#FF6347',
+  },
+  logoutButtonText: {
+    color: '#FF6347',
   },
   userInfo: {
     backgroundColor: '#e6f7ff',
@@ -649,10 +758,10 @@ const styles = StyleSheet.create({
     color: '#444',
     textAlign: 'center',
   },
-  messageList: { 
-    flex: 1, 
-    paddingHorizontal: 10, 
-    paddingTop: 10 
+  messageList: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 10
   },
   inputContainer: {
     flexDirection: 'row',
@@ -660,6 +769,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#ccc',
     backgroundColor: '#fff',
+    alignItems: 'center',
   },
   input: {
     flex: 1,
@@ -668,15 +778,15 @@ const styles = StyleSheet.create({
     marginRight: 10,
     borderRadius: 20,
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
     backgroundColor: '#ffffff',
     maxHeight: 100,
+    fontSize: 15,
   },
   sendButton: {
     borderRadius: 20,
-    paddingHorizontal: 5,
-    justifyContent: 'center',
-    backgroundColor: '#007AFF',
+    height: 40,
   },
   messageBubble: {
     maxWidth: '80%',
@@ -696,14 +806,15 @@ const styles = StyleSheet.create({
   },
   userText: { color: '#fff', fontSize: 15 },
   assistantText: { color: '#000', fontSize: 15 },
-  
-  // Improved car selection styles
+
+  // Car selection styles
   carSelectionContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: '#eee',
+    zIndex: 10,
   },
   carSelectionTitle: {
     fontSize: 14,
@@ -714,73 +825,11 @@ const styles = StyleSheet.create({
   carSelectionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 5,
   },
   dropdownContainer: {
     flex: 1,
     marginHorizontal: 3,
-    position: 'relative',
-    zIndex: 1, // Ensure dropdowns show above other elements
-  },
-  dropdownButton: {
-    backgroundColor: '#f8f8f8',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownButtonText: {
-    fontSize: 14,
-    color: '#333',
-    flex: 1,
-  },
-  dropdownIcon: {
-    fontSize: 10,
-    color: '#777',
-    marginLeft: 5,
-  },
-  placeholderText: {
-    color: '#888',
-  },
-  disabledDropdown: {
-    backgroundColor: '#f0f0f0',
-    borderColor: '#ccc',
-  },
-  disabledText: {
-    color: '#aaa',
-  },
-  dropdownList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    marginTop: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    zIndex: 999,
-  },
-  dropdownScrollView: {
-    maxHeight: 150,
-  },
-  dropdownItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: '#333',
   },
   selectedCarContainer: {
     flexDirection: 'row',
@@ -795,17 +844,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   resetButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
+    backgroundColor: 'transparent',
   },
   resetButtonText: {
     color: '#FF6347',
-    fontSize: 12,
-    fontWeight: '500',
   },
-  
+
   // Admin modal styles
   modalContainer: {
     flex: 1,
@@ -817,53 +861,99 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 20,
-    width: '90%',
-    maxHeight: '80%',
+    width: '95%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 15,
     textAlign: 'center',
+    color: '#333',
   },
-  promptList: {
-    flex: 1,
+  loadingIndicator: {
+    marginVertical: 40,
+  },
+  paginationContainer: {
     marginVertical: 10,
-  },
-  promptItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  promptDate: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
-  },
-  promptText: {
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  responseText: {
-    fontSize: 14,
-    color: '#555',
-  },
-  paginationControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 10,
-    paddingVertical: 5,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  pageInfo: {
-    marginHorizontal: 10,
   },
   closeButton: {
     marginTop: 10,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+  },
+  refreshButton: {
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  noDataContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 100,
+  },
+  noDataText: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
+  },
+  noDataSubText: {
+    fontSize: 14,
+    color: '#aaa',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  tableContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 10,
+    flexShrink: 1,
+    flexGrow: 1,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: '#ddd',
+  },
+  tableHeaderCell: {
+    fontWeight: 'bold',
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'left',
+    paddingHorizontal: 5,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+  },
+  tableCell: {
+    fontSize: 13,
+    color: '#444',
+    paddingHorizontal: 5,
+    textAlignVertical: 'center',
+  },
+  tableBody: {
+    maxHeight: 400,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#555',
+    padding: 5,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 4,
+    marginBottom: 10,
+    textAlign: 'center',
   },
 });
