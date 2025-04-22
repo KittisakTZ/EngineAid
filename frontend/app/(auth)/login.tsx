@@ -1,12 +1,12 @@
 // app/(auth)/login.tsx
 import React, { useState } from 'react';
-import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Image } from 'react-native';
 import { TextInput as PaperTextInput, Text as PaperText } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'; // Assuming Expo Icons is available
+import { Ionicons } from '@expo/vector-icons'; 
 import api from '../../services/api';
 import { storeToken, storeUser } from '../../services/auth';
-import { CustomButton } from '../../components/CustomButton'; // Import CustomButton
+import { CustomButton } from '../../components/CustomButton';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -74,9 +74,12 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollViewContainer}>
         <View style={styles.container}>
-          <PaperText variant="headlineMedium" style={styles.title}>
-            EngineAid Login
-          </PaperText>
+          <Image
+            source={require('../../assets/images/engine-aid-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="EngineAID logo"
+          />
 
           <PaperTextInput
             label="Email"
@@ -155,5 +158,11 @@ const styles = StyleSheet.create({
   },
   switchButton: {
     marginTop: 20,
+  },
+  logo: {
+    width: 180, 
+    height: 120, 
+    alignSelf: 'center', 
+    marginBottom: 20, 
   },
 });

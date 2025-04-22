@@ -1,6 +1,6 @@
 // app/(auth)/register.tsx
 import React, { useState } from 'react';
-import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Image } from 'react-native';
 import { TextInput as PaperTextInput, Text as PaperText } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons'; // Assuming Expo Icons is available
@@ -58,9 +58,12 @@ export default function RegisterScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollViewContainer}>
         <View style={styles.container}>
-          <PaperText variant="headlineMedium" style={styles.title}>
-            Create Account
-          </PaperText>
+          <Image
+                      source={require('../../assets/images/engine-aid-logo.png')}
+                      style={styles.logo}
+                      resizeMode="contain"
+                      accessibilityLabel="EngineAID logo"
+          />
 
           <PaperTextInput
             label="Email"
@@ -148,5 +151,11 @@ const styles = StyleSheet.create({
   },
   switchButton: {
     marginTop: 20,
+  },
+  logo: {
+    width: 180,
+    height: 120, 
+    alignSelf: 'center', 
+    marginBottom: 20, 
   },
 });

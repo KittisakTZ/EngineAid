@@ -15,7 +15,6 @@ import { CustomButton } from '../../components/CustomButton';
 import { Pagination } from '../../components/Pagination';
 import { Dropdown } from '../../components/Dropdown';
 
-// Add interface for user
 interface User {
   id: string;
   email: string;
@@ -28,7 +27,6 @@ interface Message {
   content: string;
 }
 
-// Add interface for API prompt data
 interface EnginePrompt {
   id: string;
   prompt: string;
@@ -37,7 +35,6 @@ interface EnginePrompt {
   userId: string;
 }
 
-// Add interface for pagination
 interface Pagination {
   currentPage: number;
   pageSize: number;
@@ -45,19 +42,16 @@ interface Pagination {
   totalPages: number;
 }
 
-// Define a type for car models mapping
 interface CarModelsMap {
   [make: string]: string[];
 }
 
-// Car information data
 const carMakes = [
   'Toyota', 'Honda', 'Nissan', 'Mazda', 'Ford',
   'Chevrolet', 'BMW', 'Mercedes-Benz', 'Audi',
   'Hyundai', 'Kia', 'Mitsubishi'
 ];
 
-// Model mappings based on makes
 const carModelsByMake: CarModelsMap = {
   'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Prius', 'Fortuner', 'Vios'],
   'Honda': ['Civic', 'Accord', 'CR-V', 'HR-V', 'Jazz', 'City'],
@@ -73,9 +67,8 @@ const carModelsByMake: CarModelsMap = {
   'Mitsubishi': ['Mirage', 'Attrage', 'Xpander', 'Pajero Sport', 'Triton']
 };
 
-// Generate years from current year back to 1990
 const generateYears = () => {
-  const currentYear = new Date().getFullYear() + 1; // Include next year's models
+  const currentYear = new Date().getFullYear() + 1;
   const years = [];
   for (let year = currentYear; year >= 1990; year--) {
     years.push(year.toString());
@@ -96,17 +89,14 @@ export default function ChatScreen() {
   const router = useRouter();
   const apiUrl = getApiUrl();
 
-  // Car selection state
   const [selectedMake, setSelectedMake] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedYear, setSelectedYear] = useState<string>('');
 
-  // Dropdown visibility state
   const [makeDropdownVisible, setMakeDropdownVisible] = useState(false);
   const [modelDropdownVisible, setModelDropdownVisible] = useState(false);
   const [yearDropdownVisible, setYearDropdownVisible] = useState(false);
 
-  // Admin related state
   const [adminModalVisible, setAdminModalVisible] = useState(false);
   const [promptData, setPromptData] = useState<EnginePrompt[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -118,7 +108,6 @@ export default function ChatScreen() {
   const [promptsLoading, setPromptsLoading] = useState(false);
 
   useEffect(() => {
-    // Get user data on component mount
     const getUserData = async () => {
       try {
         const userData = await getUser();
@@ -133,12 +122,10 @@ export default function ChatScreen() {
     getUserData();
   }, []);
 
-  // Reset model when make changes
   useEffect(() => {
     setSelectedModel('');
   }, [selectedMake]);
 
-  // Function to hide all dropdowns
   const hideAllDropdowns = () => {
     setMakeDropdownVisible(false);
     setModelDropdownVisible(false);
@@ -169,7 +156,6 @@ export default function ChatScreen() {
   const handleSend = async () => {
     if (!inputText.trim() || isLoading || !apiUrl) return;
 
-    // Format the message with car details if they're selected
     let messageText = inputText.trim();
     if (selectedMake) {
       let carDetails = `รถ: ${selectedMake}`;
@@ -274,24 +260,22 @@ export default function ChatScreen() {
     router.replace('/(auth)/login');
   };
 
-  // Reset car selection
   const resetCarSelection = () => {
     setSelectedMake('');
     setSelectedModel('');
     setSelectedYear('');
   };
 
-  // Function to fetch prompt data with pagination
   const fetchPromptData = async (page = 1, limit = 15) => {
     try {
       setPromptsLoading(true);
-      setPromptData([]); // Clear previous data while loading new page
+      setPromptData([]);
 
       const token = await getToken();
       if (!token) {
         Alert.alert("ข้อผิดพลาดการตรวจสอบสิทธิ์", "กรุณาเข้าสู่ระบบอีกครั้ง");
         router.replace('/(auth)/login');
-        setPromptsLoading(false); // Ensure loading stops
+        setPromptsLoading(false); 
         return;
       }
 
@@ -310,7 +294,7 @@ export default function ChatScreen() {
 
       if (!fetchResponse.ok) {
         console.error('API error status:', fetchResponse.status);
-        const errorText = await fetchResponse.text(); // Read error body
+        const errorText = await fetchResponse.text(); 
         console.error('API error body:', errorText);
         throw new Error(`API error: ${fetchResponse.status} - ${errorText}`);
       }
@@ -321,11 +305,9 @@ export default function ChatScreen() {
       let prompts: EnginePrompt[] = [];
       let receivedPagination: Pagination | null = null;
 
-      // --- Data Extraction Logic ---
       if (responseData && typeof responseData === 'object') {
         console.log('Response data keys:', Object.keys(responseData));
 
-        // Check for common pagination structures first
         if (responseData.pagination && typeof responseData.pagination === 'object') {
             receivedPagination = {
                 currentPage: responseData.pagination.currentPage ?? page,
@@ -336,16 +318,14 @@ export default function ChatScreen() {
             console.log('Received pagination data:', receivedPagination);
         }
 
-        // Function to map item to EnginePrompt structure
         const mapItem = (item: any, index: number): EnginePrompt => ({
-          id: item.id || `item-${page}-${index}`, // Ensure unique ID across pages
+          id: item.id || `item-${page}-${index}`, 
           prompt: item.prompt || item.question || item.text || 'ไม่มีข้อมูล',
           response: item.response || item.answer || item.reply || 'ไม่มีข้อมูล',
           createdAt: item.createdAt || item.created_at || new Date().toISOString(),
           userId: item.userId || item.user_id || 'ไม่ระบุ',
         });
 
-        // Extract prompt data based on common structures
         if (responseData.data && Array.isArray(responseData.data)) {
           console.log('Response has data array with', responseData.data.length, 'items');
           prompts = responseData.data.map(mapItem);
@@ -360,7 +340,6 @@ export default function ChatScreen() {
           prompts = responseData.map(mapItem);
         } else {
            console.log('Response format is unexpected, trying to find an array property');
-           // Fallback: try finding the first property that is an array
            const arrayKey = Object.keys(responseData).find(key => Array.isArray(responseData[key]));
            if (arrayKey) {
                console.log(`Found array in key '${arrayKey}' with ${responseData[arrayKey].length} items`);
@@ -370,40 +349,34 @@ export default function ChatScreen() {
            }
         }
 
-        // --- Pagination Handling ---
         if (prompts.length > 0) {
           console.log(`Created ${prompts.length} formatted prompt items`);
           setPromptData(prompts);
 
           if (receivedPagination) {
-            // Use pagination info from API response
-             // Adjust totalPages if necessary based on totalItems and pageSize
              const calculatedTotalPages = Math.ceil(receivedPagination.totalItems / receivedPagination.pageSize);
              setPagination({
                  ...receivedPagination,
-                 totalPages: calculatedTotalPages > 0 ? calculatedTotalPages : 1, // Ensure at least 1 page
+                 totalPages: calculatedTotalPages > 0 ? calculatedTotalPages : 1,
              });
           } else {
-            // Fallback: Create basic pagination if API didn't provide it
             console.warn('Pagination data missing in API response, creating fallback.');
-            // Assume this page is full unless it's the only one
             const isLikelyLastPage = prompts.length < limit;
             setPagination({
               currentPage: page,
               pageSize: limit,
-              totalItems: (page - 1) * limit + prompts.length + (isLikelyLastPage ? 0 : 1), // Estimate total
-              totalPages: page + (isLikelyLastPage ? 0 : 1), // Estimate total pages
+              totalItems: (page - 1) * limit + prompts.length + (isLikelyLastPage ? 0 : 1),
+              totalPages: page + (isLikelyLastPage ? 0 : 1),
             });
           }
         } else {
           console.log('No data could be extracted or array was empty.');
           setPromptData([]);
-           // If no data, reset pagination to reflect this
           setPagination({
             currentPage: 1,
             pageSize: limit,
             totalItems: 0,
-            totalPages: 1 // Still show 1 page, but it's empty
+            totalPages: 1 
           });
         }
 
@@ -426,12 +399,75 @@ export default function ChatScreen() {
   };
 
   const handlePageChange = (newPage: number) => {
-      // Ensure newPage is within valid bounds (1 to totalPages)
     if (newPage > 0 && newPage <= pagination.totalPages && newPage !== pagination.currentPage) {
       fetchPromptData(newPage, pagination.pageSize);
     } else {
         console.log(`Page change ignored: newPage=${newPage}, current=${pagination.currentPage}, total=${pagination.totalPages}`);
     }
+  };
+
+  const handleDeletePrompt = async (promptId: string) => {
+    console.log(`Attempting to delete prompt: ${promptId}`);
+
+    Alert.alert(
+      "ยืนยันการลบ",
+      `คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูล Prompt ID: ${promptId}? การกระทำนี้ไม่สามารถย้อนกลับได้`,
+      [
+        {
+          text: "ยกเลิก",
+          style: "cancel",
+        },
+        {
+          text: "ลบ",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setPromptsLoading(true);
+
+              const token = await getToken();
+              if (!token) {
+                Alert.alert("ข้อผิดพลาด", "ไม่พบ Token กรุณาเข้าสู่ระบบใหม่");
+                setPromptsLoading(false);
+                router.replace('/(auth)/login');
+                return;
+              }
+
+              const apiUrl = getApiUrl();
+              const url = `${apiUrl}/engine/prompts/${promptId}`;
+
+              const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+              });
+
+              if (response.ok) {
+                console.log(`Prompt ${promptId} deleted successfully.`);
+                Alert.alert("สำเร็จ", "ลบข้อมูลเรียบร้อยแล้ว");
+
+                if (promptData.length === 1 && pagination.currentPage > 1) {
+                  fetchPromptData(pagination.currentPage - 1, pagination.pageSize);
+                } else {
+                  fetchPromptData(pagination.currentPage, pagination.pageSize);
+                }
+              } else {
+                const errorData = await response.json();
+                console.error(`Failed to delete prompt ${promptId}. Status: ${response.status}`, errorData);
+                Alert.alert("เกิดข้อผิดพลาด", `ไม่สามารถลบข้อมูลได้: ${errorData.message || `Status ${response.status}`}`);
+              }
+            } catch (error: any) {
+              console.error('Error during delete request:', error);
+              Alert.alert("เกิดข้อผิดพลาด", `เกิดปัญหาในการเชื่อมต่อ: ${error.message}`);
+            } finally {
+               setPromptsLoading(false);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const renderAdminModal = () => {
@@ -450,25 +486,21 @@ export default function ChatScreen() {
               <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />
             ) : (
               <>
-                {/* Debug Info (Optional) */}
                 <Text style={styles.debugText}>
                   สถานะ: {pagination.currentPage}/{pagination.totalPages} | รายการ: {promptData.length} / {pagination.totalItems}
                 </Text>
 
-                {/* Data Table/List */}
                 <View style={styles.tableContainer}>
-                  {/* Table Header */}
                   <View style={styles.tableHeader}>
                     <Text style={[styles.tableHeaderCell, { flex: 0.3 }]}>ID</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำถาม</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำตอบ</Text>
                   </View>
 
-                  {/* Table Body (FlatList) */}
                   {Array.isArray(promptData) && promptData.length > 0 ? (
                     <FlatList
                       data={promptData}
-                      keyExtractor={(item) => item.id} // Use the unique ID
+                      keyExtractor={(item) => item.id}
                       renderItem={({ item, index }) => (
                         <TouchableOpacity
                           style={styles.tableRow}
@@ -476,7 +508,18 @@ export default function ChatScreen() {
                             Alert.alert(
                               'รายละเอียดข้อมูล',
                               `ID: ${item.id}\nUser: ${item.userId}\nCreated: ${new Date(item.createdAt).toLocaleString()}\n\nคำถาม:\n${item.prompt}\n\nคำตอบ:\n${item.response}`,
-                              [{ text: 'ปิด', style: 'cancel' }]
+                              [
+                                {
+                                  text: 'ลบ',
+                                  onPress: () => handleDeletePrompt(item.id),
+                                  style: 'destructive'
+                                },
+                                {
+                                  text: 'ปิด',
+                                  style: 'cancel'
+                                },
+                              ],
+                               { cancelable: true }
                             );
                           }}
                         >
@@ -485,7 +528,7 @@ export default function ChatScreen() {
                             numberOfLines={1}
                             ellipsizeMode="middle"
                           >
-                            {item.id ? item.id.substring(item.id.length - 8) : `N/A-${index}`} {/* Show last 8 chars */}
+                            {item.id ? item.id.substring(item.id.length - 8) : `N/A-${index}`}
                           </Text>
                           <Text
                             style={[styles.tableCell, { flex: 0.35 }]}
@@ -503,7 +546,7 @@ export default function ChatScreen() {
                           </Text>
                         </TouchableOpacity>
                       )}
-                      style={styles.tableBody} // Let FlatList handle its own scrolling
+                      style={styles.tableBody}
                     />
                   ) : (
                     <View style={styles.noDataContainer}>
@@ -517,8 +560,7 @@ export default function ChatScreen() {
                   )}
                 </View>
 
-                {/* Replace with Pagination component */}
-                <Pagination 
+                <Pagination
                   currentPage={pagination.currentPage}
                   totalPages={pagination.totalPages}
                   onPageChange={handlePageChange}
@@ -528,13 +570,11 @@ export default function ChatScreen() {
               </>
             )}
 
-            {/* Action Buttons */}
             <CustomButton
               title="รีเฟรชข้อมูล"
               variant="success"
               onPress={() => {
-                console.log('Refreshing data...');
-                fetchPromptData(1, pagination.pageSize); // Refresh goes to page 1
+                fetchPromptData(1, pagination.pageSize);
               }}
               disabled={promptsLoading}
               style={styles.refreshButton}
@@ -560,14 +600,12 @@ export default function ChatScreen() {
     </View>
   );
 
-  // Render car selection section with custom dropdowns
   const renderCarSelections = () => {
     return (
       <View style={styles.carSelectionContainer}>
         <Text style={styles.carSelectionTitle}>เลือกรถของคุณ (Optional):</Text>
 
         <View style={styles.carSelectionRow}>
-          {/* Make Dropdown - Using Dropdown component */}
           <Dropdown
             placeholder="ยี่ห้อรถ"
             items={carMakes}
@@ -581,7 +619,6 @@ export default function ChatScreen() {
             style={styles.dropdownContainer}
           />
 
-          {/* Model Dropdown - Using Dropdown component */}
           <Dropdown
             placeholder="รุ่นรถ"
             items={selectedMake ? carModelsByMake[selectedMake] || [] : []}
@@ -598,7 +635,6 @@ export default function ChatScreen() {
             style={styles.dropdownContainer}
           />
 
-          {/* Year Dropdown - Using Dropdown component */}
           <Dropdown
             placeholder="ปีรถ"
             items={carYears}
@@ -613,7 +649,6 @@ export default function ChatScreen() {
           />
         </View>
 
-        {/* Selected car display */}
         {(selectedMake || selectedModel || selectedYear) && (
           <View style={styles.selectedCarContainer}>
             <Text style={styles.selectedCarText}>
@@ -650,7 +685,6 @@ export default function ChatScreen() {
                 variant="primary"
                 onPress={() => {
                   setAdminModalVisible(true);
-                  // Fetch initial data for page 1 when opening modal
                   fetchPromptData(1, pagination.pageSize);
                 }}
                 style={styles.adminButton}
