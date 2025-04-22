@@ -84,12 +84,11 @@ export const getEnginePrompts = async (req: CustomRequest, res: Response) => {
 
         const [prompts, totalPrompts] = await prisma.$transaction([
             prisma.enginePrompt.findMany({
-                where: { userId: userId }, // ใช้ userId ที่ได้มา
                 orderBy: { createdAt: 'desc' },
                 skip: skip,
                 take: pageSize,
             }),
-            prisma.enginePrompt.count({ where: { userId: userId } }), // ใช้ userId ที่ได้มา
+            prisma.enginePrompt.count(),
         ]);
 
         const totalPages = Math.ceil(totalPrompts / pageSize);

@@ -1,31 +1,149 @@
-// app/(app)/chat.tsx
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    View, Text, TextInput, Button, FlatList, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, Alert 
+    View, Text, TextInput, StyleSheet,
+    KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+    FlatList, Modal, TouchableOpacity, ScrollView, ListRenderItemInfo
 } from 'react-native';
+import { Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import EventSource, { MessageEvent } from 'react-native-sse';
-import { getToken, removeToken } from '../../services/auth';
+import { getToken, removeToken, getUser } from '../../services/auth';
 import { getApiUrl } from '../../services/api';
+import api from '../../services/api';
+import { CustomButton } from '../../components/CustomButton';
+import { Pagination } from '../../components/Pagination';
+import { Dropdown } from '../../components/Dropdown';
 
-// ... (interface Message เหมือนเดิม) ...
+// Add interface for user
+interface User {
+  id: string;
+  email: string;
+  role: 'USER' | 'ADMIN';
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
 }
 
+// Add interface for API prompt data
+interface EnginePrompt {
+  id: string;
+  prompt: string;
+  response: string;
+  createdAt: string;
+  userId: string;
+}
+
+// Add interface for pagination
+interface Pagination {
+  currentPage: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+}
+
+// Define a type for car models mapping
+interface CarModelsMap {
+  [make: string]: string[];
+}
+
+// Car information data
+const carMakes = [
+  'Toyota', 'Honda', 'Nissan', 'Mazda', 'Ford',
+  'Chevrolet', 'BMW', 'Mercedes-Benz', 'Audi',
+  'Hyundai', 'Kia', 'Mitsubishi'
+];
+
+// Model mappings based on makes
+const carModelsByMake: CarModelsMap = {
+  'Toyota': ['Camry', 'Corolla', 'RAV4', 'Highlander', 'Prius', 'Fortuner', 'Vios'],
+  'Honda': ['Civic', 'Accord', 'CR-V', 'HR-V', 'Jazz', 'City'],
+  'Nissan': ['Almera', 'Kicks', 'X-Trail', 'Navara', 'Sylphy', 'Note'],
+  'Mazda': ['Mazda2', 'Mazda3', 'CX-3', 'CX-5', 'CX-30', 'BT-50'],
+  'Ford': ['Ranger', 'Everest', 'Mustang', 'Focus', 'EcoSport'],
+  'Chevrolet': ['Colorado', 'Captiva', 'Trailblazer', 'Corvette'],
+  'BMW': ['3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5'],
+  'Mercedes-Benz': ['C-Class', 'E-Class', 'S-Class', 'GLA', 'GLC', 'GLE'],
+  'Audi': ['A3', 'A4', 'A6', 'Q3', 'Q5', 'Q7'],
+  'Hyundai': ['Accent', 'Elantra', 'Tucson', 'Santa Fe', 'Creta'],
+  'Kia': ['Rio', 'Cerato', 'Sportage', 'Carnival', 'Seltos'],
+  'Mitsubishi': ['Mirage', 'Attrage', 'Xpander', 'Pajero Sport', 'Triton']
+};
+
+// Generate years from current year back to 1990
+const generateYears = () => {
+  const currentYear = new Date().getFullYear() + 1; // Include next year's models
+  const years = [];
+  for (let year = currentYear; year >= 1990; year--) {
+    years.push(year.toString());
+  }
+  return years;
+};
+
+const carYears = generateYears();
 
 export default function ChatScreen() {
-  // ... (useState, useRef, useRouter, apiUrl เหมือนเดิม) ...
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
   const apiUrl = getApiUrl();
+
+  // Car selection state
+  const [selectedMake, setSelectedMake] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<string>('');
+
+  // Dropdown visibility state
+  const [makeDropdownVisible, setMakeDropdownVisible] = useState(false);
+  const [modelDropdownVisible, setModelDropdownVisible] = useState(false);
+  const [yearDropdownVisible, setYearDropdownVisible] = useState(false);
+
+  // Admin related state
+  const [adminModalVisible, setAdminModalVisible] = useState(false);
+  const [promptData, setPromptData] = useState<EnginePrompt[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    currentPage: 1,
+    pageSize: 15,
+    totalItems: 0,
+    totalPages: 0
+  });
+  const [promptsLoading, setPromptsLoading] = useState(false);
+
+  useEffect(() => {
+    // Get user data on component mount
+    const getUserData = async () => {
+      try {
+        const userData = await getUser();
+        if (userData) {
+          setUser(userData);
+          setIsAdmin(userData.role === 'ADMIN');
+        }
+      } catch (error) {
+        console.error('Error getting user data:', error);
+      }
+    };
+    getUserData();
+  }, []);
+
+  // Reset model when make changes
+  useEffect(() => {
+    setSelectedModel('');
+  }, [selectedMake]);
+
+  // Function to hide all dropdowns
+  const hideAllDropdowns = () => {
+    setMakeDropdownVisible(false);
+    setModelDropdownVisible(false);
+    setYearDropdownVisible(false);
+  };
 
   const closeEventSource = useCallback(() => {
     if (eventSourceRef.current) {
@@ -42,20 +160,28 @@ export default function ChatScreen() {
     };
   }, [closeEventSource]);
 
-   useEffect(() => {
-        if (flatListRef.current && messages.length > 0) {
-           setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-        }
-    }, [messages]);
-
+  useEffect(() => {
+    if (flatListRef.current && messages.length > 0) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  }, [messages]);
 
   const handleSend = async () => {
     if (!inputText.trim() || isLoading || !apiUrl) return;
 
+    // Format the message with car details if they're selected
+    let messageText = inputText.trim();
+    if (selectedMake) {
+      let carDetails = `รถ: ${selectedMake}`;
+      if (selectedModel) carDetails += ` ${selectedModel}`;
+      if (selectedYear) carDetails += ` (${selectedYear})`;
+      messageText = `${carDetails}\n\nคำถาม: ${messageText}`;
+    }
+
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: inputText.trim(),
+      content: messageText,
     };
 
     setMessages(prev => [
@@ -70,7 +196,7 @@ export default function ChatScreen() {
 
     const token = await getToken();
     if (!token) {
-      Alert.alert("Authentication Error", "Please log in again."); // <<< ใช้ Alert ที่ import มา
+      Alert.alert("ข้อผิดพลาดการตรวจสอบสิทธิ์", "กรุณาเข้าสู่ระบบอีกครั้ง");
       router.replace('/(auth)/login');
       setIsLoading(false);
       return;
@@ -85,7 +211,6 @@ export default function ChatScreen() {
         'Accept': 'text/event-stream'
       },
       body: JSON.stringify({ prompt: userMessage.content }),
-      // react-native-sse อาจมี options เพิ่มเติม เช่น timeout, debug
     };
 
     console.log('Starting EventSource connection to:', url);
@@ -94,9 +219,7 @@ export default function ChatScreen() {
       console.log('SSE Connection Opened');
     });
     eventSourceRef.current.addEventListener('message', (event: MessageEvent) => {
-      // console.log('SSE Message Received raw:', event);
-      if (event && event.data) { // ตรวจสอบว่ามี data ก่อน parse
-         // console.log('SSE Message Data:', event.data);
+      if (event && event.data) {
         try {
           const parsedData = JSON.parse(event.data);
           if (parsedData.response) {
@@ -117,33 +240,32 @@ export default function ChatScreen() {
           console.error('Error parsing SSE message:', e, 'Data:', event.data);
         }
       } else {
-          console.warn('Received SSE message event without data:', event);
+        console.warn('Received SSE message event without data:', event);
       }
     });
 
-    // จัดการ Error event
-    eventSourceRef.current.addEventListener('error', (event: any) => { // Type ของ error event อาจซับซ้อน ใช้ any ไปก่อนได้
-        console.error('SSE Error Event:', event); // Log ตัว event ดูว่ามี message อะไรบ้าง
-        let errorMessage = "[Error receiving response]";
-        if(event && event.message) {
-            errorMessage = `[Error: ${event.message}]`;
+    eventSourceRef.current.addEventListener('error', (event: any) => {
+      console.error('SSE Error Event:', event);
+      let errorMessage = "[เกิดข้อผิดพลาดในการรับข้อมูล]";
+      if(event && event.message) {
+        errorMessage = `[ข้อผิดพลาด: ${event.message}]`;
+      }
+      setMessages(prev => {
+        const lastMsgIndex = prev.length - 1;
+        if(lastMsgIndex >= 0 && prev[lastMsgIndex].role === 'assistant' && prev[lastMsgIndex].content === ''){
+          const updatedMessages = [...prev];
+          updatedMessages[lastMsgIndex] = {...updatedMessages[lastMsgIndex], content: errorMessage};
+          return updatedMessages;
         }
-        setMessages(prev => {
-           const lastMsgIndex = prev.length - 1;
-           if(lastMsgIndex >= 0 && prev[lastMsgIndex].role === 'assistant' && prev[lastMsgIndex].content === ''){
-              const updatedMessages = [...prev];
-              updatedMessages[lastMsgIndex] = {...updatedMessages[lastMsgIndex], content: errorMessage};
-              return updatedMessages;
-           }
-           return prev;
-        });
-        closeEventSource();
+        return prev;
       });
+      closeEventSource();
+    });
 
     eventSourceRef.current.addEventListener('done' as any, (event: any) => {
-        console.log('SSE Done event received:', event?.data); // ลอง log data ดูด้วย
-         closeEventSource();
-     });
+      console.log('SSE Done event received:', event?.data);
+      closeEventSource();
+    });
   };
 
   const handleLogout = async () => {
@@ -152,14 +274,365 @@ export default function ChatScreen() {
     router.replace('/(auth)/login');
   };
 
-  // ... (renderMessage และ return UI เหมือนเดิม) ...
-   const renderMessage = ({ item }: { item: Message }) => (
+  // Reset car selection
+  const resetCarSelection = () => {
+    setSelectedMake('');
+    setSelectedModel('');
+    setSelectedYear('');
+  };
+
+  // Function to fetch prompt data with pagination
+  const fetchPromptData = async (page = 1, limit = 15) => {
+    try {
+      setPromptsLoading(true);
+      setPromptData([]); // Clear previous data while loading new page
+
+      const token = await getToken();
+      if (!token) {
+        Alert.alert("ข้อผิดพลาดการตรวจสอบสิทธิ์", "กรุณาเข้าสู่ระบบอีกครั้ง");
+        router.replace('/(auth)/login');
+        setPromptsLoading(false); // Ensure loading stops
+        return;
+      }
+
+      console.log(`Fetching prompts data: page=${page}, limit=${limit}`);
+
+      const apiUrl = getApiUrl();
+      const url = `${apiUrl}/engine/prompts?page=${page}&limit=${limit}`;
+
+      const fetchResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!fetchResponse.ok) {
+        console.error('API error status:', fetchResponse.status);
+        const errorText = await fetchResponse.text(); // Read error body
+        console.error('API error body:', errorText);
+        throw new Error(`API error: ${fetchResponse.status} - ${errorText}`);
+      }
+
+      const responseData = await fetchResponse.json();
+      console.log('Raw API Response:', JSON.stringify(responseData, null, 2));
+
+      let prompts: EnginePrompt[] = [];
+      let receivedPagination: Pagination | null = null;
+
+      // --- Data Extraction Logic ---
+      if (responseData && typeof responseData === 'object') {
+        console.log('Response data keys:', Object.keys(responseData));
+
+        // Check for common pagination structures first
+        if (responseData.pagination && typeof responseData.pagination === 'object') {
+            receivedPagination = {
+                currentPage: responseData.pagination.currentPage ?? page,
+                pageSize: responseData.pagination.pageSize ?? limit,
+                totalItems: responseData.pagination.totalItems ?? 0,
+                totalPages: responseData.pagination.totalPages ?? 1,
+            };
+            console.log('Received pagination data:', receivedPagination);
+        }
+
+        // Function to map item to EnginePrompt structure
+        const mapItem = (item: any, index: number): EnginePrompt => ({
+          id: item.id || `item-${page}-${index}`, // Ensure unique ID across pages
+          prompt: item.prompt || item.question || item.text || 'ไม่มีข้อมูล',
+          response: item.response || item.answer || item.reply || 'ไม่มีข้อมูล',
+          createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+          userId: item.userId || item.user_id || 'ไม่ระบุ',
+        });
+
+        // Extract prompt data based on common structures
+        if (responseData.data && Array.isArray(responseData.data)) {
+          console.log('Response has data array with', responseData.data.length, 'items');
+          prompts = responseData.data.map(mapItem);
+        } else if (responseData.items && Array.isArray(responseData.items)) {
+          console.log('Response has items array with', responseData.items.length, 'items');
+          prompts = responseData.items.map(mapItem);
+        } else if (responseData.prompts && Array.isArray(responseData.prompts)) {
+            console.log('Response has prompts array with', responseData.prompts.length, 'items');
+            prompts = responseData.prompts.map(mapItem);
+        } else if (Array.isArray(responseData)) {
+          console.log('Response is a direct array with', responseData.length, 'items');
+          prompts = responseData.map(mapItem);
+        } else {
+           console.log('Response format is unexpected, trying to find an array property');
+           // Fallback: try finding the first property that is an array
+           const arrayKey = Object.keys(responseData).find(key => Array.isArray(responseData[key]));
+           if (arrayKey) {
+               console.log(`Found array in key '${arrayKey}' with ${responseData[arrayKey].length} items`);
+               prompts = responseData[arrayKey].map(mapItem);
+           } else {
+               console.log('Could not find a suitable array property for prompt data.');
+           }
+        }
+
+        // --- Pagination Handling ---
+        if (prompts.length > 0) {
+          console.log(`Created ${prompts.length} formatted prompt items`);
+          setPromptData(prompts);
+
+          if (receivedPagination) {
+            // Use pagination info from API response
+             // Adjust totalPages if necessary based on totalItems and pageSize
+             const calculatedTotalPages = Math.ceil(receivedPagination.totalItems / receivedPagination.pageSize);
+             setPagination({
+                 ...receivedPagination,
+                 totalPages: calculatedTotalPages > 0 ? calculatedTotalPages : 1, // Ensure at least 1 page
+             });
+          } else {
+            // Fallback: Create basic pagination if API didn't provide it
+            console.warn('Pagination data missing in API response, creating fallback.');
+            // Assume this page is full unless it's the only one
+            const isLikelyLastPage = prompts.length < limit;
+            setPagination({
+              currentPage: page,
+              pageSize: limit,
+              totalItems: (page - 1) * limit + prompts.length + (isLikelyLastPage ? 0 : 1), // Estimate total
+              totalPages: page + (isLikelyLastPage ? 0 : 1), // Estimate total pages
+            });
+          }
+        } else {
+          console.log('No data could be extracted or array was empty.');
+          setPromptData([]);
+           // If no data, reset pagination to reflect this
+          setPagination({
+            currentPage: 1,
+            pageSize: limit,
+            totalItems: 0,
+            totalPages: 1 // Still show 1 page, but it's empty
+          });
+        }
+
+      } else {
+        console.error('Invalid response format, not an object:', responseData);
+        setPromptData([]);
+         setPagination({ currentPage: 1, pageSize: limit, totalItems: 0, totalPages: 1 });
+        Alert.alert('ข้อผิดพลาด', 'ข้อมูลที่ได้รับมีรูปแบบไม่ถูกต้อง');
+      }
+    } catch (error: unknown) {
+      console.error('Error fetching prompt data:', error);
+      setPromptData([]);
+      setPagination({ currentPage: 1, pageSize: limit, totalItems: 0, totalPages: 1 });
+
+      const errorMessage = error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ';
+      Alert.alert('ข้อผิดพลาด', `ไม่สามารถดึงข้อมูลได้: ${errorMessage}`);
+    } finally {
+      setPromptsLoading(false);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+      // Ensure newPage is within valid bounds (1 to totalPages)
+    if (newPage > 0 && newPage <= pagination.totalPages && newPage !== pagination.currentPage) {
+      fetchPromptData(newPage, pagination.pageSize);
+    } else {
+        console.log(`Page change ignored: newPage=${newPage}, current=${pagination.currentPage}, total=${pagination.totalPages}`);
+    }
+  };
+
+  const renderAdminModal = () => {
+    return (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={adminModalVisible}
+        onRequestClose={() => setAdminModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>แผงควบคุมผู้ดูแลระบบ</Text>
+
+            {promptsLoading ? (
+              <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />
+            ) : (
+              <>
+                {/* Debug Info (Optional) */}
+                <Text style={styles.debugText}>
+                  สถานะ: {pagination.currentPage}/{pagination.totalPages} | รายการ: {promptData.length} / {pagination.totalItems}
+                </Text>
+
+                {/* Data Table/List */}
+                <View style={styles.tableContainer}>
+                  {/* Table Header */}
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.3 }]}>ID</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำถาม</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำตอบ</Text>
+                  </View>
+
+                  {/* Table Body (FlatList) */}
+                  {Array.isArray(promptData) && promptData.length > 0 ? (
+                    <FlatList
+                      data={promptData}
+                      keyExtractor={(item) => item.id} // Use the unique ID
+                      renderItem={({ item, index }) => (
+                        <TouchableOpacity
+                          style={styles.tableRow}
+                          onPress={() => {
+                            Alert.alert(
+                              'รายละเอียดข้อมูล',
+                              `ID: ${item.id}\nUser: ${item.userId}\nCreated: ${new Date(item.createdAt).toLocaleString()}\n\nคำถาม:\n${item.prompt}\n\nคำตอบ:\n${item.response}`,
+                              [{ text: 'ปิด', style: 'cancel' }]
+                            );
+                          }}
+                        >
+                          <Text
+                            style={[styles.tableCell, { flex: 0.3 }]}
+                            numberOfLines={1}
+                            ellipsizeMode="middle"
+                          >
+                            {item.id ? item.id.substring(item.id.length - 8) : `N/A-${index}`} {/* Show last 8 chars */}
+                          </Text>
+                          <Text
+                            style={[styles.tableCell, { flex: 0.35 }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {item.prompt || 'ไม่มีข้อมูล'}
+                          </Text>
+                          <Text
+                            style={[styles.tableCell, { flex: 0.35 }]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {item.response || 'ไม่มีข้อมูล'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      style={styles.tableBody} // Let FlatList handle its own scrolling
+                    />
+                  ) : (
+                    <View style={styles.noDataContainer}>
+                      <Text style={styles.noDataText}>
+                          {pagination.totalItems === 0 ? 'ไม่มีข้อมูลในระบบ' : 'ไม่พบข้อมูลในหน้านี้'}
+                      </Text>
+                      <Text style={styles.noDataSubText}>
+                        กรุณาลองรีเฟรช หรือตรวจสอบ API
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Replace with Pagination component */}
+                <Pagination 
+                  currentPage={pagination.currentPage}
+                  totalPages={pagination.totalPages}
+                  onPageChange={handlePageChange}
+                  loading={promptsLoading}
+                  style={styles.paginationContainer}
+                />
+              </>
+            )}
+
+            {/* Action Buttons */}
+            <CustomButton
+              title="รีเฟรชข้อมูล"
+              variant="success"
+              onPress={() => {
+                console.log('Refreshing data...');
+                fetchPromptData(1, pagination.pageSize); // Refresh goes to page 1
+              }}
+              disabled={promptsLoading}
+              style={styles.refreshButton}
+            />
+
+            <CustomButton
+              title="ปิด"
+              variant="danger"
+              onPress={() => setAdminModalVisible(false)}
+              style={styles.closeButton}
+            />
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => (
     <View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
       <Text style={item.role === 'user' ? styles.userText : styles.assistantText}>
-          {item.role === 'assistant' && item.content === '' && isLoading ? 'Thinking...' : item.content}
+        {item.role === 'assistant' && item.content === '' && isLoading ? 'กำลังคิด...' : item.content}
       </Text>
     </View>
   );
+
+  // Render car selection section with custom dropdowns
+  const renderCarSelections = () => {
+    return (
+      <View style={styles.carSelectionContainer}>
+        <Text style={styles.carSelectionTitle}>เลือกรถของคุณ (Optional):</Text>
+
+        <View style={styles.carSelectionRow}>
+          {/* Make Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="ยี่ห้อรถ"
+            items={carMakes}
+            selectedValue={selectedMake}
+            onSelect={(value) => setSelectedMake(value)}
+            visible={makeDropdownVisible}
+            onToggle={() => {
+              hideAllDropdowns();
+              setMakeDropdownVisible(!makeDropdownVisible);
+            }}
+            style={styles.dropdownContainer}
+          />
+
+          {/* Model Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="รุ่นรถ"
+            items={selectedMake ? carModelsByMake[selectedMake] || [] : []}
+            selectedValue={selectedModel}
+            onSelect={(value) => setSelectedModel(value)}
+            disabled={!selectedMake}
+            visible={modelDropdownVisible}
+            onToggle={() => {
+              if (selectedMake) {
+                hideAllDropdowns();
+                setModelDropdownVisible(!modelDropdownVisible);
+              }
+            }}
+            style={styles.dropdownContainer}
+          />
+
+          {/* Year Dropdown - Using Dropdown component */}
+          <Dropdown
+            placeholder="ปีรถ"
+            items={carYears}
+            selectedValue={selectedYear}
+            onSelect={(value) => setSelectedYear(value)}
+            visible={yearDropdownVisible}
+            onToggle={() => {
+              hideAllDropdowns();
+              setYearDropdownVisible(!yearDropdownVisible);
+            }}
+            style={styles.dropdownContainer}
+          />
+        </View>
+
+        {/* Selected car display */}
+        {(selectedMake || selectedModel || selectedYear) && (
+          <View style={styles.selectedCarContainer}>
+            <Text style={styles.selectedCarText}>
+              {selectedMake} {selectedModel} {selectedYear ? `(${selectedYear})` : ''}
+            </Text>
+            <CustomButton
+              title="ล้างข้อมูลรถ"
+              variant="outline"
+              size="small"
+              onPress={resetCarSelection}
+              style={styles.resetButton}
+              textStyle={styles.resetButtonText}
+            />
+          </View>
+        )}
+      </View>
+    );
+  };
+
 
   return (
     <KeyboardAvoidingView
@@ -167,82 +640,320 @@ export default function ChatScreen() {
       style={styles.container}
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
-      <View style={styles.header}>
+      <View style={styles.flexContainer}>
+        <View style={styles.header}>
           <Text style={styles.headerTitle}>EngineAid Chat</Text>
-          <Button title="Logout" onPress={handleLogout} color="#FF6347" />
-      </View>
+          <View style={styles.headerButtons}>
+            {isAdmin && (
+              <CustomButton
+                title="แผงผู้ดูแล"
+                variant="primary"
+                onPress={() => {
+                  setAdminModalVisible(true);
+                  // Fetch initial data for page 1 when opening modal
+                  fetchPromptData(1, pagination.pageSize);
+                }}
+                style={styles.adminButton}
+              />
+            )}
+            <CustomButton
+              title="ออกจากระบบ"
+              variant="outline"
+              onPress={handleLogout}
+              style={styles.logoutButton}
+              textStyle={styles.logoutButtonText}
+            />
+          </View>
+        </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        style={styles.messageList}
-        contentContainerStyle={{ paddingBottom: 10 }}
-      />
+        {user && (
+          <View style={styles.userInfo}>
+            <Text style={styles.userInfoText}>
+              เข้าสู่ระบบเป็น: {user.email} ({user.role === 'ADMIN' ? 'ผู้ดูแลระบบ' : 'ผู้ใช้'})
+            </Text>
+          </View>
+        )}
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Ask about your car..."
-          editable={!isLoading}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          style={styles.messageList}
+          contentContainerStyle={{ paddingBottom: 10 }}
+          onScrollBeginDrag={hideAllDropdowns}
         />
-        <Button title="Send" onPress={handleSend} disabled={isLoading || !inputText.trim()} />
+
+        {renderCarSelections()}
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="ถามเกี่ยวกับรถของคุณ..."
+            editable={!isLoading}
+            multiline={true}
+            onFocus={hideAllDropdowns}
+          />
+          <CustomButton
+            title="ส่ง"
+            variant="primary"
+            onPress={handleSend}
+            disabled={isLoading || !inputText.trim()}
+            loading={isLoading}
+            style={styles.sendButton}
+          />
+        </View>
+
+        {isAdmin && renderAdminModal()}
       </View>
     </KeyboardAvoidingView>
   );
 }
-
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f0f0f0' },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingTop: Platform.OS === 'ios' ? 50 : 30,
-        paddingBottom: 10,
-        backgroundColor: '#ffffff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#cccccc',
-    },
-    headerTitle: { fontSize: 18, fontWeight: 'bold' },
-    messageList: { flex: 1, paddingHorizontal: 10, paddingTop: 10 },
-    inputContainer: {
-        flexDirection: 'row',
-        padding: 10,
-        borderTopWidth: 1,
-        borderTopColor: '#ccc',
-        backgroundColor: '#fff',
-    },
-    input: {
-        flex: 1,
-        borderColor: 'gray',
-        borderWidth: 1,
-        marginRight: 10,
-        borderRadius: 20,
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        backgroundColor: '#ffffff'
-    },
-    messageBubble: {
-        maxWidth: '80%',
-        padding: 10,
-        borderRadius: 15,
-        marginBottom: 10,
-    },
-    userBubble: {
-        backgroundColor: '#007AFF',
-        alignSelf: 'flex-end',
-        borderBottomRightRadius: 0,
-    },
-    assistantBubble: {
-        backgroundColor: '#E5E5EA',
-        alignSelf: 'flex-start',
-        borderBottomLeftRadius: 0,
-    },
-    userText: { color: '#fff' },
-    assistantText: { color: '#000' },
+  container: {
+    flex: 1,
+    backgroundColor: '#f0f0f0'
+  },
+  flexContainer: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#cccccc',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adminButton: {
+    marginRight: 8,
+  },
+  logoutButton: {
+    borderColor: '#FF6347',
+  },
+  logoutButtonText: {
+    color: '#FF6347',
+  },
+  userInfo: {
+    backgroundColor: '#e6f7ff',
+    padding: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#cccccc',
+  },
+  userInfoText: {
+    fontSize: 12,
+    color: '#444',
+    textAlign: 'center',
+  },
+  messageList: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 10
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#ccc',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  input: {
+    flex: 1,
+    borderColor: '#bbb',
+    borderWidth: 1,
+    marginRight: 10,
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: '#ffffff',
+    maxHeight: 100,
+    fontSize: 15,
+  },
+  sendButton: {
+    borderRadius: 20,
+    height: 40,
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 18,
+    marginBottom: 10,
+  },
+  userBubble: {
+    backgroundColor: '#007AFF',
+    alignSelf: 'flex-end',
+    borderBottomRightRadius: 5,
+  },
+  assistantBubble: {
+    backgroundColor: '#E5E5EA',
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: 5,
+  },
+  userText: { color: '#fff', fontSize: 15 },
+  assistantText: { color: '#000', fontSize: 15 },
+
+  // Car selection styles
+  carSelectionContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    zIndex: 10,
+  },
+  carSelectionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
+  },
+  carSelectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  dropdownContainer: {
+    flex: 1,
+    marginHorizontal: 3,
+  },
+  selectedCarContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingHorizontal: 5,
+  },
+  selectedCarText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  resetButton: {
+    backgroundColor: 'transparent',
+  },
+  resetButtonText: {
+    color: '#FF6347',
+  },
+
+  // Admin modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    width: '95%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center',
+    color: '#333',
+  },
+  loadingIndicator: {
+    marginVertical: 40,
+  },
+  paginationContainer: {
+    marginVertical: 10,
+  },
+  closeButton: {
+    marginTop: 10,
+  },
+  refreshButton: {
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  noDataContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 100,
+  },
+  noDataText: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
+  },
+  noDataSubText: {
+    fontSize: 14,
+    color: '#aaa',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  tableContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 10,
+    flexShrink: 1,
+    flexGrow: 1,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: '#ddd',
+  },
+  tableHeaderCell: {
+    fontWeight: 'bold',
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'left',
+    paddingHorizontal: 5,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+  },
+  tableCell: {
+    fontSize: 13,
+    color: '#444',
+    paddingHorizontal: 5,
+    textAlignVertical: 'center',
+  },
+  tableBody: {
+    maxHeight: 400,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#555',
+    padding: 5,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 4,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
 });

@@ -1,11 +1,13 @@
 // app/(auth)/register.tsx
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { TextInput as PaperTextInput, Button as PaperButton, Text as PaperText, ActivityIndicator, useTheme } from 'react-native-paper';
+import { View, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { TextInput as PaperTextInput, Text as PaperText } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import api from '../../services/api'; // ใช้ Axios instance ที่ตั้งค่าไว้
+import { Ionicons } from '@expo/vector-icons'; // Assuming Expo Icons is available
+import api from '../../services/api';
+import { CustomButton } from '../../components/CustomButton'; // Import CustomButton
 
-export default function RegisterScreen() { // <<< ต้องมี export default
+export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -23,8 +25,8 @@ export default function RegisterScreen() { // <<< ต้องมี export defa
       return;
     }
     if (password.length < 6) {
-         Alert.alert('Error', 'Password must be at least 6 characters long');
-         return;
+      Alert.alert('Error', 'Password must be at least 6 characters long');
+      return;
     }
     setLoading(true);
     try {
@@ -46,13 +48,16 @@ export default function RegisterScreen() { // <<< ต้องมี export defa
     }
   };
 
+  // Create a register icon for the button
+  const registerIcon = <Ionicons name="person-add" size={18} color="#FFFFFF" />;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.keyboardAvoidingView}
     >
       <ScrollView contentContainerStyle={styles.scrollViewContainer}>
-         <View style={styles.container}>
+        <View style={styles.container}>
           <PaperText variant="headlineMedium" style={styles.title}>
             Create Account
           </PaperText>
@@ -65,7 +70,7 @@ export default function RegisterScreen() { // <<< ต้องมี export defa
             keyboardType="email-address"
             autoCapitalize="none"
             mode="outlined"
-             left={<PaperTextInput.Icon icon="email" />}
+            left={<PaperTextInput.Icon icon="email" />}
           />
 
           <PaperTextInput
@@ -85,35 +90,37 @@ export default function RegisterScreen() { // <<< ต้องมี export defa
             style={styles.input}
             secureTextEntry
             mode="outlined"
-            left={<PaperTextInput.Icon icon="lock-check" />} // <<< เปลี่ยน Icon
+            left={<PaperTextInput.Icon icon="lock-check" />}
           />
 
-          <PaperButton
-            mode="contained"
+          {/* Replace PaperButton with CustomButton */}
+          <CustomButton
             onPress={handleRegister}
+            title={loading ? "Registering..." : "Register"}
+            variant="success" // Using success green color for register
+            size="large"
             loading={loading}
             disabled={loading}
             style={styles.button}
-            icon="account-plus" // <<< เปลี่ยน Icon
-          >
-            {loading ? 'Registering...' : 'Register'}
-          </PaperButton>
+            icon={registerIcon}
+            iconPosition="left"
+          />
 
-          <PaperButton
-            mode="text"
+          {/* Replace the second button too */}
+          <CustomButton
             onPress={() => router.back()}
+            title="Already have an account? Login"
+            variant="text"
+            size="medium"
             disabled={loading}
             style={styles.switchButton}
-          >
-            Already have an account? Login
-          </PaperButton>
-         </View>
+          />
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// ใช้ Styles เดียวกับ Login ได้ หรือปรับแก้ตามต้องการ
 const styles = StyleSheet.create({
   keyboardAvoidingView: {
     flex: 1,
@@ -138,7 +145,6 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
-    paddingVertical: 8,
   },
   switchButton: {
     marginTop: 20,
