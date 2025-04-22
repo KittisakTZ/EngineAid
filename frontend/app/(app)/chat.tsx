@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, TextInput, StyleSheet,
@@ -27,12 +26,14 @@ interface Message {
   content: string;
 }
 
+// Updated Interface
 interface EnginePrompt {
   id: string;
   prompt: string;
   response: string;
   createdAt: string;
   userId: string;
+  userEmail?: string; 
 }
 
 interface Pagination {
@@ -68,7 +69,7 @@ const carModelsByMake: CarModelsMap = {
 };
 
 const generateYears = () => {
-  const currentYear = new Date().getFullYear() + 1;
+  const currentYear = 2025;
   const years = [];
   for (let year = currentYear; year >= 1990; year--) {
     years.push(year.toString());
@@ -275,7 +276,7 @@ export default function ChatScreen() {
       if (!token) {
         Alert.alert("ข้อผิดพลาดการตรวจสอบสิทธิ์", "กรุณาเข้าสู่ระบบอีกครั้ง");
         router.replace('/(auth)/login');
-        setPromptsLoading(false); 
+        setPromptsLoading(false);
         return;
       }
 
@@ -294,12 +295,13 @@ export default function ChatScreen() {
 
       if (!fetchResponse.ok) {
         console.error('API error status:', fetchResponse.status);
-        const errorText = await fetchResponse.text(); 
+        const errorText = await fetchResponse.text();
         console.error('API error body:', errorText);
         throw new Error(`API error: ${fetchResponse.status} - ${errorText}`);
       }
 
       const responseData = await fetchResponse.json();
+      console.log('--- DEBUG: Data after mapping in Frontend: ---');
       console.log('Raw API Response:', JSON.stringify(responseData, null, 2));
 
       let prompts: EnginePrompt[] = [];
@@ -317,15 +319,33 @@ export default function ChatScreen() {
             };
             console.log('Received pagination data:', receivedPagination);
         }
-
         const mapItem = (item: any, index: number): EnginePrompt => ({
-          id: item.id || `item-${page}-${index}`, 
+          id: item.id || `item-${page}-${index}`,
           prompt: item.prompt || item.question || item.text || 'ไม่มีข้อมูล',
           response: item.response || item.answer || item.reply || 'ไม่มีข้อมูล',
           createdAt: item.createdAt || item.created_at || new Date().toISOString(),
           userId: item.userId || item.user_id || 'ไม่ระบุ',
+          userEmail: item.userEmail || undefined
         });
+        let sourceArray: any[] = [];
+        if (responseData.data && Array.isArray(responseData.data)) {
+            sourceArray = responseData.data;
+        } else if (responseData.items && Array.isArray(responseData.items)) {
+            sourceArray = responseData.items;
+        } // ... add other potential keys if needed ...
 
+        if (sourceArray.length > 0) {
+            prompts = sourceArray.map(mapItem);
+            // --- LOG 5: Data after mapping in Frontend ---
+            console.log('--- DEBUG: Data after mapping in Frontend: ---');
+            console.log(JSON.stringify(prompts.slice(0, 2), null, 2)); // Log first 2 mapped items
+            // ---------------------------------------------
+            setPromptData(prompts);
+            console.log('--- DEBUG: State after setPromptData (may be previous): ---', promptData);
+        } else {
+            console.log('--- DEBUG: Source array for prompts was empty or not found ---');
+            setPromptData([]);
+        }
         if (responseData.data && Array.isArray(responseData.data)) {
           console.log('Response has data array with', responseData.data.length, 'items');
           prompts = responseData.data.map(mapItem);
@@ -376,7 +396,7 @@ export default function ChatScreen() {
             currentPage: 1,
             pageSize: limit,
             totalItems: 0,
-            totalPages: 1 
+            totalPages: 1
           });
         }
 
@@ -397,6 +417,7 @@ export default function ChatScreen() {
       setPromptsLoading(false);
     }
   };
+
 
   const handlePageChange = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.totalPages && newPage !== pagination.currentPage) {
@@ -492,9 +513,9 @@ export default function ChatScreen() {
 
                 <View style={styles.tableContainer}>
                   <View style={styles.tableHeader}>
-                    <Text style={[styles.tableHeaderCell, { flex: 0.3 }]}>ID</Text>
-                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำถาม</Text>
-                    <Text style={[styles.tableHeaderCell, { flex: 0.35 }]}>คำตอบ</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.5 }]}>Email</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.4 }]}>คำถาม</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.3 }]}>คำตอบ</Text>
                   </View>
 
                   {Array.isArray(promptData) && promptData.length > 0 ? (
@@ -505,9 +526,11 @@ export default function ChatScreen() {
                         <TouchableOpacity
                           style={styles.tableRow}
                           onPress={() => {
+                            console.log('--- DEBUG: Data for Alert (item): ---');
+                            console.log(JSON.stringify(item, null, 2));
                             Alert.alert(
                               'รายละเอียดข้อมูล',
-                              `ID: ${item.id}\nUser: ${item.userId}\nCreated: ${new Date(item.createdAt).toLocaleString()}\n\nคำถาม:\n${item.prompt}\n\nคำตอบ:\n${item.response}`,
+                              `ID: ${item.id}\nEmail: ${item.userEmail || 'ไม่พบอีเมล'}\nCreated: ${new Date(item.createdAt).toLocaleString()}\n\nคำถาม:\n${item.prompt}\n\nคำตอบ:\n${item.response}`,
                               [
                                 {
                                   text: 'ลบ',
@@ -524,21 +547,21 @@ export default function ChatScreen() {
                           }}
                         >
                           <Text
-                            style={[styles.tableCell, { flex: 0.3 }]}
+                            style={[styles.tableCell, { flex: 0.5 }]}
                             numberOfLines={1}
                             ellipsizeMode="middle"
                           >
-                            {item.id ? item.id.substring(item.id.length - 8) : `N/A-${index}`}
+                            {item.userEmail ? item.userEmail.substring(item.userEmail.length -99) : `N/A-${index}`}
                           </Text>
                           <Text
-                            style={[styles.tableCell, { flex: 0.35 }]}
+                            style={[styles.tableCell, { flex: 0.4 }]}
                             numberOfLines={2}
                             ellipsizeMode="tail"
                           >
                             {item.prompt || 'ไม่มีข้อมูล'}
                           </Text>
                           <Text
-                            style={[styles.tableCell, { flex: 0.35 }]}
+                            style={[styles.tableCell, { flex: 0.3 }]}
                             numberOfLines={2}
                             ellipsizeMode="tail"
                           >
