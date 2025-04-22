@@ -1,6 +1,6 @@
 import express, { Router, Request, Response, NextFunction } from 'express';
 import { authenticate, authorize } from '../middlewares/authMiddleware';
-import { getEnginePrompts, createEnginePrompt } from '../controllers/engineController';
+import { getEnginePrompts, createEnginePrompt, deleteEnginePrompt, CustomRequest } from '../controllers/engineController';
 
 const router: Router = express.Router();
 
@@ -23,6 +23,16 @@ router.post('/prompts', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error in /prompts route:', error);
     res.status(500).json({ message: 'Failed to create prompt' });
+  }
+});
+
+router.delete('/prompts/:id', async (req: Request, res: Response) => {
+  try {
+    await deleteEnginePrompt(req as CustomRequest, res);
+  } catch (error) {
+     if (!res.headersSent) {
+         res.status(500).json({ message: 'Failed to delete prompt' });
+     }
   }
 });
 
