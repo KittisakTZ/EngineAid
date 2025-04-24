@@ -83,36 +83,22 @@ export const getEnginePrompts = async (req: CustomRequest, res: Response) => {
         const pageSize = Math.max(1, limit);
         const skip = (pageNumber - 1) * pageSize;
 
-        const [promptsFromDb, totalPrompts] = await prisma.$transaction([
+        const [prompts, totalPrompts] = await prisma.$transaction([
             prisma.enginePrompt.findMany({
                 orderBy: { createdAt: 'desc' },
                 skip: skip,
                 take: pageSize,
-                include: {
-                    user: { select: { email: true } }
-                }
             }),
             prisma.enginePrompt.count({
             }),
         ]);
-        
+
         const totalPages = Math.ceil(totalPrompts / pageSize);
 
-        const promptsForFrontend = promptsFromDb.map(prompt => ({
-            id: prompt.id,
-            prompt: prompt.prompt,
-            response: prompt.response,
-            createdAt: prompt.createdAt,
-            userId: prompt.userId,
-            userEmail: prompt.user?.email 
-        }));
-        
-        console.log('--- DEBUG: Prompts mapped for Frontend (should have userEmail): ---');
-        console.log(JSON.stringify(promptsForFrontend.slice(0, 2), null, 2));
-        console.log(`[GET Prompts] User ${userId} (Role: ${userRole}) fetched page ${pageNumber}. Sending ${promptsForFrontend.length} items.`);
+        console.log(`[GET Prompts] User ${userId} (Role: ${userRole}) fetched page ${pageNumber} (all prompts).`);
 
         res.json({
-            data: promptsForFrontend,
+            data: prompts,
             pagination: { currentPage: pageNumber, pageSize, totalItems: totalPrompts, totalPages },
         });
 
