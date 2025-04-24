@@ -13,10 +13,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/new-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "package": "com.pakpoom5586.frontend"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -40,14 +39,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_URL": "https://witty-ducks-lay.loca.lt/api",
-      "router": {
-        "origin": false
-      },
-      "eas": {
-        "projectId": "cfed9fdc-faf3-4956-a993-4f23312e0d26"
-      }
-    },
-    "owner": "pakpoom5586"
+      "API_URL": "https://itchy-groups-behave.loca.lt/api"
+    }
   }
 }
